@@ -1,50 +1,105 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/tauri";
-import "./App.css";
+import { useState, useEffect } from 'react'
+import { invoke } from '@tauri-apps/api'
+// @ts-ignore
+import Board from '@asseinfo/react-kanban'
+import '@asseinfo/react-kanban/dist/styles.css'
+
+type TBoard = {
+  columns: [TColumn];
+}
+
+type TColumn = {
+  id: number;
+  title: string;
+  cards: [TCard];
+}
+
+type TCard = {
+  id: number
+  title: string
+  description: string | undefined
+}
+
+type TMovedFrom = {
+  fromColumnId: number;
+  fromPosition: number;
+}
+
+type TMovedTo = {
+  toColumnId: number;
+  toPosition: number;
+}
+
+class CardPos {
+  columnId: number;
+  position: number;
+  
+  constructor(columnId: number, position: number) {
+    this.columnId = columnId
+    this.position = position
+  }
+}
+
+async function handleAddCard(board: TBoard, column: TColumn, card: TCard) {
+  const pos = new CardPos(column.id, 0);
+  await invoke<void>("handle_add_card", { "card": card, "pos": pos })
+}
+
+async function handleMoveCard(board: TBoard, card: TCard, from: TMovedFrom, to: TMovedTo) {
+  const fromPos = new CardPos(from.fromColumnId, from.fromPosition)
+  const toPos = new CardPos(to.toColumnId, to.toPosition)
+  await invoke<void>("handle_move_card", { card, from: fromPos, to: toPos })
+}
+
+async function handleRemoveCard(board: TBoard, column: TColumn, card: TCard) {
+  await invoke<void>("handle_remove_card", { "card": card, "columnId": column.id })
+}
+
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  const [board, setBoard] = useState<TBoard | null>(null)
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
-    setGreetMsg(await invoke("greet", { name }));
-  }
+  useEffect(() => {
+    (async () => {
+      console.log('de')
+      const board = await invoke<TBoard>("get_board", {})
+        .catch(err => {
+          console.error('e')
+          console.error(err)
+          return null
+        })
+      console.debug(board)
+      setBoard(board)
+    })();
+  }, []);
 
   return (
-    <div className="container">
-      <h1>Welcome to Tauri!</h1>
-
-      <div className="row">
-        <a href="https://vitejs.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://reactjs.org" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <div className="row">
-        <div>
-          <input
-            id="greet-input"
-            onChange={(e) => setName(e.currentTarget.value)}
-            placeholder="Enter a name..."
-          />
-          <button type="button" onClick={() => greet()}>
-            Greet
-          </button>
-        </div>
-      </div>
-      <p>{greetMsg}</p>
-    </div>
-  );
+    <>
+      {board != null &&
+        <Board
+          // ボードの初期データ
+          initialBoard={board}
+          // カードの追加を許可（トップに「＋」ボタンを表示）
+          allowAddCard={{ on: "top" }}
+          // カードの削除を許可
+          allowRemoveCard
+          // カラム（カードのグループ）のドラッグをオフにする
+          disableColumnDrag
+          // 新しいカードの作成時、idに現在時刻の数値表現をセットする
+          onNewCardConfirm={(draftCard: any) => ({
+            id: new Date().getTime(),
+            ...draftCard
+          })}
+          // 新しいカードが作成されたら、カード等の内容をコンソールに表示する
+          onCardNew={handleAddCard}
+          // カードがドラッグされたら、カード等の内容をコンソールに表示する
+          onCardDragEnd={handleMoveCard}
+          // カードが削除されたら、カード等の内容をコンソールに表示する
+          onCardRemove={handleRemoveCard}
+        />
+      }
+    </>
+  )
 }
 
 export default App;
